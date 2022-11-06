@@ -15,7 +15,8 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 	cv::namedWindow("Drawing");
     // equidistant sampling
     simplify(path);
-	
+	m_simplifiedPath.resize(8); //Für knn darf der Vektor nur 8 Elemente haben
+
 	float minX = m_simplifiedPath[0].x;
 	float maxY = m_simplifiedPath[0].x;
 	float minY= m_simplifiedPath[0].x;
@@ -31,36 +32,61 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 		if (m_simplifiedPath[i].y > maxY)
 			maxY = m_simplifiedPath[i].y;
 	}
-	
-	cv::Mat drawing = cv::Mat::zeros(cv::Size(maxX-minX, maxY-minY), CV_64FC1);
-	cv::Scalar color = cv::Scalar(255, 255, 255);
+
+	/*
+	wir haben das falsch verstanden und sollen nicht mit einem Bild, sondern doch nur mit den Punkten arbeiten. Deswegen hier die schicke per-Hand-skalierung (natürlich noch nicht getestet alles)
+	*/
+
+	int xScaler = 100 / abs(maxX - minX);
+	int yScaler = 100 / abs(maxY - minY)*-1;	// -1 to mirror y
 
 	for (int i = 0; i < m_simplifiedPath.size(); i++) {
 		m_simplifiedPath[i].x -= minX;
+		m_simplifiedPath[i].x *= xScaler;
 		m_simplifiedPath[i].y -= minY;
+		m_simplifiedPath[i].y *= yScaler;
 	}
-	for (int i = 0; i < m_simplifiedPath.size()-1; i++) {
-		cv::line(drawing, m_simplifiedPath[i], m_simplifiedPath[i + 1], color, 5);
-	}
-	resize(drawing, drawing, cv::Size(100, 100),cv::INTER_LINEAR);
-	cv::flip(drawing, drawing, 1);
-	cv::imshow("Drawing", drawing);
-    // normalize and mirror y
-
-    /*~~~~~~~~~~~*
-     * YOUR CODE *
-     * GOES HERE *
-     *~~~~~~~~~~~*/
 
     // match using knn
 	int k = 3;
-		
+	/*
+	Vektor der von den k nächsten Nachbarn die Distanz zur gemalten Zahl und das label speichert. So kann der Vektor einfach mit sort() nach Distanz sortiert werden
+	*/
+	std::vector< pair <float, int>> nearestNeighbours(k)	
+	float distance;
+	/*
+	naiver algo, da ich davon ausgehe, dass an der selben stelle angefangen wird die Zahl zu malen und unsere punkte ja auch nicht equally spaced sind:
 
-	for (int i = 0; i++; i < 0) {
-		c_dataSet;
+	- gehe jede Zahl im Datensatz durch
+	- berechne für jeden Punkt der Zahl die Distanz zum dem Punkt unsere og-Zahl der den selben Index hat
+	- die Summe dieser Distanzen ist unser Abstandsmaß für zwei Zahlen
+	- solange noch nicht k Zahlen im nearestNeigbour Vector sind pack einfach jede Zahl rein
+	- sind schon Zahlen drin guck dir die Vorderste an. Da der Vektor sortiert ist hat diese Zahl die höchste Distanz. Wenn wir eine geringere Distanz haben tauschen wir die Einträge im Vektor aus
+	- dann sortieren wir den Vektor wieder und machen weiter
+	*/
+	for (int i = 0; i < c_dataSet.size(); i++; {
+		distance = 0;	
+		digit = c_dataSet[i];
+		for(int j = 0; j<digit.points().size(); j++){ 
+			distance += norm(digit.points(i)-m_simplifiedPath[i]);
+		}
+		if(nearestNeighbours.size() < k){
+			nearestNeighbours.push_back((distance, digit.label()));
+			nearestNeighbours.sort();
+		} else if(nearestNeighbours[0].y > distance){
+			nearestNeighbours[0] = (distance, digit.label());
+			nearestNeighbours.sort();
+		}
 	}
-    // you should store your result in m_result
-    // m_result = ...
+
+	std::vector<int> labels(10); //Vektor in dem gespeichert wird welches Label wie oft in den k-nearest-neighbours vorkam
+
+	for (int i = 0; i <k; i++){
+		labels[nearestNeighbours[i].y]++;
+	}
+	
+    m_result = std::distance(
+		labels.begin(),std::max_element(labels.begin(), labels.end())); //gibt hoffentlich die position des größten elements im array wieder
 }
 
 int Classifier::getResult() const
@@ -79,6 +105,7 @@ void Classifier::simplify(std::vector<cv::Point2f> path)
 	for (int i = 0; i < path.size(); i += point_intervall) {
 		m_simplifiedPath.push_back(path[i]);
 	}
+
 
 
 	/*	for equal spacing (not working):
