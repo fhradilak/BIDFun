@@ -22,11 +22,27 @@ public:
 
 void Classifier::classify(const std::vector<cv::Point2f>& path)
 {
-	cv::namedWindow("Drawing");
+	cv::Mat newFrame = cv::Mat(1000, 1000, CV_64F,0.0);
+	cv::Scalar color = cv::Scalar(100, 0, 50);
+	cv::Mat secondFrame = cv::Mat(300, 300, CV_64F, 0.0);
+	cv::Mat thirdFrame = cv::Mat(300, 300, CV_64F, 0.0);
+
+
+	/*cv::namedWindow("Drawing");
+	cv::namedWindow("Before");
+	cv::namedWindow("After");
+	*/
     // equidistant sampling
     simplify(path);
-	
+
+	for (int i = 0; i < m_simplifiedPath.size(); i++) {
+		cv::circle(newFrame, m_simplifiedPath[i], 10, color, 5);
+	}
+	//cv::imshow("Before", newFrame);
+	//m_simplifiedPath.erase(m_simplifiedPath.begin(), m_simplifiedPath.begin() + 8);
 	m_simplifiedPath.resize(8); //Für knn darf der Vektor nur 8 Elemente haben
+
+	
 
 	float minX = m_simplifiedPath[0].x;
 	float maxY = m_simplifiedPath[0].x;
@@ -48,18 +64,37 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 	wir haben das falsch verstanden und sollen nicht mit einem Bild, sondern doch nur mit den Punkten arbeiten. Deswegen hier die schicke per-Hand-skalierung (natürlich noch nicht getestet alles)
 	*/
 
-	int xScaler = 100 / abs(maxX - minX);
-	int yScaler = 100 / abs(maxY - minY)*-1;	// -1 to mirror y
+
+	float xScaler = 100 / abs(maxX - minX);
+	float yScaler = 100 / abs(maxY - minY)*-1;	// -1 to mirror y
+
 
 	for (int i = 0; i < m_simplifiedPath.size(); i++) {
 		m_simplifiedPath[i].x -= minX;
 		m_simplifiedPath[i].x *= xScaler;
 		m_simplifiedPath[i].y -= minY;
 		m_simplifiedPath[i].y *= yScaler;
+		m_simplifiedPath[i].y += 100.0;
+
 	}
+	for (int i = 0; i < m_simplifiedPath.size(); i++) {
+		cv::circle(secondFrame, m_simplifiedPath[i]+cv::Point2f(100,100), 10, color, 5);
+		if(i<m_simplifiedPath.size()-1){
+			cv::line(secondFrame, m_simplifiedPath[i] + cv::Point2f(100, 100), m_simplifiedPath[i + 1] + cv::Point2f(100, 100), color, 10, 5);
+		}
+		
+	}
+	//cv::imshow("After", secondFrame);
+
+	Digit d = c_dataSet[1];
+	//std::cout << d.label();
+	for (int i = 0; i < d.points().size(); i++) {
+		cv::circle(thirdFrame, d.points()[i] + cv::Point(100, 100), 10, color, 5);
+	}
+	//cv::imshow("Test", thirdFrame);
 
     // match using knn
-	int k = 10;
+	int k = 15;
 	/*
 	Vektor der von den k nächsten Nachbarn die Distanz zur gemalten Zahl und das label speichert. So kann der Vektor einfach mit sort() nach Distanz sortiert werden
 	*/
@@ -95,25 +130,7 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 
  			distance += cv::norm(cv::Point2f(digit.points()[j]) - m_simplifiedPath[j]);
 		}
-			/*nN.push((std::make_pair(distance, digit.label())));
-			std::pair<float,int> test = nN.top();
-			*/
-
-		/*	if (nearestNeighbours[0].first > distance) {
-				std::pair<float, int> next = nearestNeighbours[0];
-				nearestNeighbours[0] = std::make_pair(distance, digit.label());
-
-				nearestNeighbours[2] = nearestNeighbours[1];
-				nearestNeighbours[1] = next;
-			}
-			else if (nearestNeighbours[1].first > distance) {
-				nearestNeighbours[2] = nearestNeighbours[1];
-				nearestNeighbours[1] = std::make_pair(distance, digit.label());
-			}
-			else if (nearestNeighbours[2].first > distance) {
-				nearestNeighbours[2] = std::make_pair(distance, digit.label());
-			}
-			*/
+		
 		if(nearestNeighbours.size() < k){
 			nearestNeighbours.push_back((std::make_pair(distance, digit.label())));
 			
@@ -137,15 +154,7 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 	}
 	
 
-	/*if(!nN.empty()){
-		for (int i = 0; i < k; i++) {
-			int t = nN.top().second;
-			nN.pop();
-			labels[t]++;
-		}
-	}
-	*/
-	
+	m_simplifiedPath.clear();
     m_result = std::distance(
 		labels.begin(),std::max_element(labels.begin(), labels.end())); //gibt hoffentlich die position des größten elements im array wieder
 	std::cout << m_result;
@@ -163,10 +172,29 @@ std::vector<cv::Point2f> Classifier::getSimplifiedPath() const
 
 void Classifier::simplify(std::vector<cv::Point2f> path)
 {
-	int point_intervall = path.size() / 8;
-	for (int i = 0; i < path.size(); i += point_intervall) {
-		m_simplifiedPath.push_back(path[i]);
+	float pathLength = 0;
+	for (int i = 0; i < path.size() - 1; i++) {
+		pathLength += cv::norm(path[i + 1] - path[i]);
 	}
+
+	int pointCount = 8;
+	float segmentlength = pathLength / pointCount;
+	float currentPosition = 0;
+	float nextPointPosition = 0;
+	int cpi = 0;
+
+	while (currentPosition < pathLength)
+	{
+		while (nextPointPosition < currentPosition) {
+			cpi++;
+			nextPointPosition += cv::norm(path[cpi] - path[cpi - 1]);
+		}
+		m_simplifiedPath.push_back(path[cpi]);
+		currentPosition += segmentlength;
+	}
+
+
+
 
 
 
