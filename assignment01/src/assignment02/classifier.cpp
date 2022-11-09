@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 
+
 Classifier::Classifier(std::vector<Digit> dataSet, const int k)
 : c_dataSet(std::move(dataSet))
 , c_simplifiedSize(c_dataSet.front().points().size())
@@ -10,11 +11,21 @@ Classifier::Classifier(std::vector<Digit> dataSet, const int k)
 {
 }
 
+bool sortNeighbours(std::pair<float, int> i, std::pair<float, int> j) { return (i.first < j.first); }
+class CompareDist
+{
+public:
+	bool operator()(std::pair<float, int> n1, std::pair<float, int> n2) {
+		return n1.first > n2.first;
+	}
+};
+
 void Classifier::classify(const std::vector<cv::Point2f>& path)
 {
 	cv::namedWindow("Drawing");
     // equidistant sampling
     simplify(path);
+	
 	m_simplifiedPath.resize(8); //Für knn darf der Vektor nur 8 Elemente haben
 
 	float minX = m_simplifiedPath[0].x;
@@ -48,11 +59,14 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 	}
 
     // match using knn
-	int k = 3;
+	int k = 10;
 	/*
 	Vektor der von den k nächsten Nachbarn die Distanz zur gemalten Zahl und das label speichert. So kann der Vektor einfach mit sort() nach Distanz sortiert werden
 	*/
-	std::vector< pair <float, int>> nearestNeighbours(k)	
+	//F: Label is a Digit and not an int
+	std::vector<std::pair<float, int>> nearestNeighbours(k);
+	//F: prioqueue
+	std::priority_queue< std::pair<float, int>, std::vector<std::pair<float, int>>, CompareDist> nN;
 	float distance;
 	/*
 	naiver algo, da ich davon ausgehe, dass an der selben stelle angefangen wird die Zahl zu malen und unsere punkte ja auch nicht equally spaced sind:
@@ -64,29 +78,77 @@ void Classifier::classify(const std::vector<cv::Point2f>& path)
 	- sind schon Zahlen drin guck dir die Vorderste an. Da der Vektor sortiert ist hat diese Zahl die höchste Distanz. Wenn wir eine geringere Distanz haben tauschen wir die Einträge im Vektor aus
 	- dann sortieren wir den Vektor wieder und machen weiter
 	*/
-	for (int i = 0; i < c_dataSet.size(); i++; {
+	for (int i = 0; i < k; i++) {
+		nearestNeighbours[i] = std::make_pair(100000000000.0, 0);
+		
+	}
+	for (int i = 0; i < c_dataSet.size(); i++) {
 		distance = 0;	
-		digit = c_dataSet[i];
+		Digit digit = c_dataSet[i];
 		for(int j = 0; j<digit.points().size(); j++){ 
-			distance += norm(digit.points(i)-m_simplifiedPath[i]);
+			cv::Point2f test= m_simplifiedPath[j];
+			cv::Point2f test_F = cv::Point2f(digit.points()[j]);
+			std::vector<cv::Point2f> contours2f;
+
+			//std::transform(digit.points().begin(), digit.points().end(), std::back_inserter(contours2f), [](const cv::Point& p) {return (cv::Point2f)p; });
+
+
+ 			distance += cv::norm(cv::Point2f(digit.points()[j]) - m_simplifiedPath[j]);
 		}
+			/*nN.push((std::make_pair(distance, digit.label())));
+			std::pair<float,int> test = nN.top();
+			*/
+
+		/*	if (nearestNeighbours[0].first > distance) {
+				std::pair<float, int> next = nearestNeighbours[0];
+				nearestNeighbours[0] = std::make_pair(distance, digit.label());
+
+				nearestNeighbours[2] = nearestNeighbours[1];
+				nearestNeighbours[1] = next;
+			}
+			else if (nearestNeighbours[1].first > distance) {
+				nearestNeighbours[2] = nearestNeighbours[1];
+				nearestNeighbours[1] = std::make_pair(distance, digit.label());
+			}
+			else if (nearestNeighbours[2].first > distance) {
+				nearestNeighbours[2] = std::make_pair(distance, digit.label());
+			}
+			*/
 		if(nearestNeighbours.size() < k){
-			nearestNeighbours.push_back((distance, digit.label()));
-			nearestNeighbours.sort();
-		} else if(nearestNeighbours[0].y > distance){
-			nearestNeighbours[0] = (distance, digit.label());
-			nearestNeighbours.sort();
+			nearestNeighbours.push_back((std::make_pair(distance, digit.label())));
+			
+			std::sort(nearestNeighbours.begin(), nearestNeighbours.end(), [](auto &left, auto &right) {
+				return left.first > right.first;
+			});
+		} else if(nearestNeighbours[0].first > distance){
+			nearestNeighbours[0] = std::make_pair(distance, digit.label());
+
+			std::sort(nearestNeighbours.begin(), nearestNeighbours.end(), [](auto &left, auto &right) {
+				return left.first > right.first;
+			});
 		}
+		
 	}
 
 	std::vector<int> labels(10); //Vektor in dem gespeichert wird welches Label wie oft in den k-nearest-neighbours vorkam
-
-	for (int i = 0; i <k; i++){
-		labels[nearestNeighbours[i].y]++;
+	for (int i = 0; i < k; i++) {
+		int t = nearestNeighbours[i].second;
+		labels[t]++;
 	}
+	
+
+	/*if(!nN.empty()){
+		for (int i = 0; i < k; i++) {
+			int t = nN.top().second;
+			nN.pop();
+			labels[t]++;
+		}
+	}
+	*/
 	
     m_result = std::distance(
 		labels.begin(),std::max_element(labels.begin(), labels.end())); //gibt hoffentlich die position des größten elements im array wieder
+	std::cout << m_result;
 }
 
 int Classifier::getResult() const
